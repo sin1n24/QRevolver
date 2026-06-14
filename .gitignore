@@ -1,0 +1,6 @@
+node_modules/
+.playwright-mcp/
+*.log
+npm-debug.log*
+# ランキングの実データは公開しない場合はコメントアウトを外す
+# records.json

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>QRevolver — 早撃ち台</title>
+<link rel="icon" href="assets/struct.ico" />
+<style>
+  :root { --leather:#3b2412; --sand:#c9a06a; --blood:#b71c1c; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden;
+    background:#1a1109; color:#f7f1e3;
+    font-family:'Special Elite','Courier New',monospace; user-select:none; }
+  #stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  /* 背景は元アセット(320x240)を画面いっぱいに引き伸ばし */
+  .bg { position:absolute; inset:0; width:100%; height:100%;
+    background-size:cover; background-position:center; image-rendering:auto;
+    transition:opacity .25s ease; }
+  #bgTitle  { background-image:url('assets/title.jpg'); }
+  #bgWait   { background-image:url('assets/bg.jpg');   opacity:0; }
+  #bgBang   { background-image:url('assets/bgs.jpg');  opacity:0; }
+  .hidden   { opacity:0 !important; pointer-events:none; }
+
+  /* 中央メッセージ帯 */
+  #banner { position:absolute; bottom:6%; left:50%; transform:translateX(-50%);
+    background:rgba(20,12,6,.78); border:3px solid var(--sand); border-radius:14px;
+    padding:.5em 1.2em; font-size:clamp(18px,4.2vw,42px); letter-spacing:.04em;
+    text-align:center; box-shadow:0 6px 24px rgba(0,0,0,.5); white-space:nowrap; }
+  #banner b { color:#ffd27a; }
+
+  /* QR札（抜きの瞬間に出現） */
+  #qrWrap { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .08s linear; }
+  #qrWrap.show { opacity:1; }
+  #qrCard { background:#fff; padding:clamp(10px,2vw,22px); border-radius:14px;
+    box-shadow:0 0 0 6px #3b2412, 0 18px 50px rgba(0,0,0,.6);
+    transform:scale(.6); transition:transform .12s cubic-bezier(.2,1.6,.4,1); }
+  #qrWrap.show #qrCard { transform:scale(1); }
+  #qrCard img { display:block; width:min(46vh,46vw); height:auto; }
+  #qrCard .draw { text-align:center; color:var(--blood); font-size:clamp(16px,3vw,30px);
+    margin-top:.3em; font-weight:bold; letter-spacing:.1em; }
+
+  /* 結果タイム */
+  #resultTime { position:absolute; top:8%; left:50%; transform:translateX(-50%);
+    background:rgba(20,12,6,.82); border:4px solid #ffd27a; border-radius:16px;
+    padding:.4em 1em; font-size:clamp(28px,8vw,90px); color:#fff; opacity:0;
+    transition:opacity .2s; text-shadow:0 0 18px rgba(255,160,40,.6); }
+  #resultTime.show { opacity:1; }
+  #resultTime small { display:block; font-size:.3em; color:#ffd27a; letter-spacing:.2em; }
+
+  /* フラッシュ（フライング/妨害） */
+  #flash { position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .15s; }
+  #flash.false { background:radial-gradient(circle, rgba(183,28,28,.55), rgba(0,0,0,.2)); }
+  #flash.freeze { background:radial-gradient(circle, rgba(120,200,255,.5), rgba(255,255,255,.15)); }
+
+  /* ランクイン トースト */
+  #toast { position:absolute; top:5%; right:4%; background:rgba(20,12,6,.9);
+    border:3px solid #ffd27a; border-radius:12px; padding:.5em 1em; font-size:clamp(14px,2.4vw,24px);
+    opacity:0; transform:translateY(-12px); transition:all .3s; }
+  #toast.show { opacity:1; transform:translateY(0); }
+
+  /* 接続URL（隅に小さく） */
+  #foot { position:absolute; bottom:8px; left:10px; font-size:12px; color:#caa; opacity:.7; }
+  #brand { position:absolute; top:10px; left:14px; font-size:clamp(14px,2.4vw,22px);
+    color:#ffd27a; text-shadow:1px 1px 0 #000; opacity:.85; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg" id="bgBang"></div>
+  <div class="bg" id="bgWait"></div>
+  <div class="bg" id="bgTitle"></div>
+
+  <div id="qrWrap"><div id="qrCard"><img id="qrImg" alt="QR" /><div class="draw">▼ 抜けェ！ ▼</div></div></div>
+
+  <div id="resultTime"><span id="timeVal">0.000</span><small>SECONDS</small></div>
+
+  <div id="banner">クリック / スペース で 抜き始め</div>
+  <div id="toast"></div>
+  <div id="flash"></div>
+
+  <div id="brand">QRevolver</div>
+  <div id="foot"></div>
+</div>
+
+<!-- 効果音（元アセット流用） -->
+<audio id="sHolster" src="assets/holster.wav" preload="auto"></audio>
+<audio id="sFire"    src="assets/fire.wav"    preload="auto"></audio>
+<audio id="sBang"    src="assets/bang.wav"    preload="auto"></audio>
+<audio id="sFreeze"  src="assets/freeze.wav"  preload="auto"></audio>
+<audio id="sBravo"   src="assets/bravo.wav"   preload="auto"></audio>
+<audio id="sBad"     src="assets/bad.wav"     preload="auto"></audio>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const bgTitle=$('bgTitle'), bgWait=$('bgWait'), bgBang=$('bgBang');
+const banner=$('banner'), qrWrap=$('qrWrap'), qrImg=$('qrImg');
+const resultTime=$('resultTime'), timeVal=$('timeVal'), flash=$('flash'), toast=$('toast');
+const snd = (id)=>{ const a=$(id); try{ a.currentTime=0; a.play().catch(()=>{}); }catch{} };
+
+let audioUnlocked=false, canStart=true;
+function unlockAudio(){
+  if(audioUnlocked) return; audioUnlocked=true;
+  ['sHolster','sFire','sBang','sFreeze','sBravo','sBad'].forEach(id=>{
+    const a=$(id); a.muted=true; a.play().then(()=>{a.pause();a.currentTime=0;a.muted=false;}).catch(()=>{a.muted=false;});
+  });
+}
+
+function showBg(which){
+  bgTitle.classList.toggle('hidden', which!=='title');
+  bgWait.style.opacity  = which==='wait' ? 1 : 0;
+  bgBang.style.opacity  = which==='bang' ? 1 : 0;
+}
+function setBanner(html){ banner.innerHTML=html; banner.style.display='block'; }
+function hideBanner(){ banner.style.display='none'; }
+
+function requestStart(){
+  if(!canStart) return;
+  unlockAudio();
+  canStart=false;
+  // 結果表示を消す
+  resultTime.classList.remove('show'); toast.classList.remove('show');
+  fetch('/start',{method:'POST'}).catch(()=>{ canStart=true; });
+}
+
+document.addEventListener('click', requestStart);
+document.addEventListener('keydown', (e)=>{ if(e.code==='Space'||e.code==='Enter'){ e.preventDefault(); requestStart(); }});
+
+// ---- SSE ----
+const es = new EventSource('/events');
+es.onmessage = (ev)=>{
+  let m; try{ m=JSON.parse(ev.data);}catch{ return; }
+  switch(m.type){
+    case 'hello': break;
+    case 'waiting':
+      qrWrap.classList.remove('show'); resultTime.classList.remove('show');
+      showBg('wait'); setBanner('… 構えろ … <b>動くな</b> …'); snd('sHolster');
+      break;
+    case 'fire':
+      qrImg.src = m.qr; qrWrap.classList.add('show');
+      hideBanner(); snd('sFire');
+      break;
+    case 'bang':
+      canStart=true;
+      qrWrap.classList.remove('show'); showBg('bang'); snd('sBang');
+      timeVal.textContent = Number(m.duration).toFixed(3);
+      resultTime.classList.add('show');
+      setBanner('決着！ もう一度撃つなら クリック / スペース');
+      break;
+    case 'falsestart':
+      flash.className=''; void flash.offsetWidth; flash.className='false';
+      flash.style.opacity=1; setTimeout(()=>flash.style.opacity=0,180);
+      snd('sBad');
+      break;
+    case 'freeze':
+      flash.className=''; void flash.offsetWidth; flash.className='freeze';
+      flash.style.opacity=1; setTimeout(()=>flash.style.opacity=0,400);
+      snd('sFreeze');
+      setBanner('❄ 妨害だ！抜きが遅れる… ❄');
+      break;
+    case 'ranking':
+      toast.textContent = `🏆 ${m.name} がランクイン！ ${Number(m.duration).toFixed(3)}s`;
+      toast.classList.add('show'); snd('sBravo');
+      setTimeout(()=>toast.classList.remove('show'), 4000);
+      break;
+  }
+};
+
+// 接続先表示
+fetch('/ranking').then(()=>{}).catch(()=>{});
+$('foot').textContent = location.host;
+showBg('title');
+</script>
+</body>
+</html>

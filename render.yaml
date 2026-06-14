@@ -1,0 +1,26 @@
+# Render Blueprint（ワンクリックデプロイ用）
+# GitHubリポジトリを Render に連携 → このファイルが自動で読み込まれる。
+# 公開URL(RENDER_EXTERNAL_URL)は Render が自動で環境変数に入れるので設定不要。
+services:
+  - type: web
+    name: qrevolver
+    runtime: node
+    plan: free            # 無料プラン（一定時間アクセスが無いとスリープ→初回アクセスが数十秒遅い）
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # ランキングをスプレッドシートに永続化するGAS Webアプリの設定（Renderダッシュボードで入力）
+      - key: GAS_URL
+        sync: false           # 例: https://script.google.com/macros/s/XXXX/exec
+      - key: GAS_SECRET
+        sync: false           # GAS側スクリプトプロパティ SECRET と同じ合言葉
+      # 月の境界に使うタイムゾーン（既定 Asia/Tokyo）
+      - key: TZ_DISPLAY
+        value: "Asia/Tokyo"
+    # ランキングを再起動/再デプロイ後も残したい場合は、有料プランで下のディスクを有効化:
+    # disk:
+    #   name: data
+    #   mountPath: /opt/render/project/src
+    #   sizeGB: 1

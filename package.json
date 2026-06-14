@@ -1,0 +1,17 @@
+{
+  "name": "qrevolver",
+  "version": "1.0.0",
+  "description": "QRevolver - The Quick-Scan Showdown, Reloaded. QRGunmanのWeb移植・改良版。PCや別スマホでQRコードを表示し、早撃ち（スキャン速度）を競う。",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4"
+  }
+}
