@@ -3,14 +3,14 @@
  * Googleスプレッドシートを「月別ランキングのデータベース」として使う。
  *
  * ■セットアップ
- *  1. 新しいGoogleスプレッドシートを作成（中身は空でOK。初回書き込み時にヘッダを自動作成）。
- *  2. 拡張機能 → Apps Script を開き、このコードを貼り付け。
+ *  1. 新しいGoogleスプレッドシートを作成（拡張機能→Apps Scriptを開く。シートにバインドされた状態にする）。
+ *  2. このコードを貼り付け。
  *  3. スクリプトプロパティに任意の合言葉を設定（推奨）:
  *     プロジェクトの設定 → スクリプト プロパティ → SECRET = 好きな文字列
  *  4. デプロイ → 新しいデプロイ → 種類「ウェブアプリ」
- *       次のユーザーとして実行: 自分
- *       アクセスできるユーザー: 全員
+ *       次のユーザーとして実行: 自分 ／ アクセスできるユーザー: 全員
  *     → 発行された /exec のURLを控える（NodeのGAS_URLに設定）。
+ *  ※ 初回はエディタで setup を1度実行して権限を承認すること。
  *  ※ Nodeサーバーからのみ呼ばれる（ブラウザから直接は叩かない）ので、SECRETで書き込みを保護できる。
  *
  * ■データ形式（シート列）
@@ -36,6 +36,14 @@ function doPost(e) {
     return json_({ ok: false, error: 'unauthorized' });
   }
 
+  // メンテ：その月（実装上は全件）の記録をクリア
+  if (body.action === 'reset') {
+    var sh0 = getSheet_();
+    var last0 = sh0.getLastRow();
+    if (last0 > 1) sh0.deleteRows(2, last0 - 1);
+    return json_({ ok: true, reset: true });
+  }
+
   var month = body.month || currentMonth_();
   var rec = {
     duration: Number(body.duration),
@@ -58,7 +66,16 @@ function getSheet_() {
     sh = ss.insertSheet(SHEET_NAME);
     sh.appendRow(['month', 'duration', 'name', 'location', 'timestamp']);
   }
+  // month列(A)とtimestamp列(E)は日付に自動変換させず文字列として保持
+  sh.getRange('A:A').setNumberFormat('@');
+  sh.getRange('E:E').setNumberFormat('@');
   return sh;
+}
+
+// セル値を 'YYYY-MM' の月キー文字列に正規化（Sheetsが日付化してもOK）
+function monthKeyOf_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, TZ, 'yyyy-MM');
+  return String(v);
 }
 
 function appendRow_(month, rec) {
@@ -78,7 +95,7 @@ function top_(month) {
   var rows = sh.getRange(2, 1, last - 1, 5).getValues();
   var out = [];
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]) !== String(month)) continue;
+    if (monthKeyOf_(rows[i][0]) !== String(month)) continue;
     out.push({
       duration: Number(rows[i][1]),
       name: String(rows[i][2]),
@@ -90,13 +107,14 @@ function top_(month) {
   return out.slice(0, RECORD_MAX);
 }
 
-function currentMonth_() {
-  return Utilities.formatDate(new Date(), TZ, 'yyyy-MM');
-}
-function nowStamp_() {
-  return Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd HH:mm');
-}
+function currentMonth_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM'); }
+function nowStamp_() { return Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd HH:mm'); }
 function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** 初回認可用：エディタで一度だけ実行して権限を許可するための関数 */
+function setup() {
+  getSheet_(); // スプレッドシートへのアクセス権限をここで承認する
+  return 'ok';
 }
